@@ -22,13 +22,13 @@
 
 
 
-![image-20201209003352700](C:\Users\PengYu\AppData\Roaming\Typora\typora-user-images\image-20201209003352700.png)
+![image-20201209003352700](http://yuge-imgsubmit.oss-cn-shenzhen.aliyuncs.com/img/image-20201209003352700.png)
 
 
 
 查看了nohup.out 
 
-![image-20201209003519822](C:\Users\PengYu\AppData\Roaming\Typora\typora-user-images\image-20201209003519822.png)
+![image-20201209003519822](http://yuge-imgsubmit.oss-cn-shenzhen.aliyuncs.com/img/image-20201209003519822.png)
 
 修改了runserver.sh和(runbroker.sh)里面的配置，修改之后发现非常正确。
 
@@ -448,13 +448,13 @@ slave1:nohup sh mqbroker -c /usr/local/rocketmq/rocketmq-all-4.4.0-bin-release/c
 
 启动broker会出现的问题，第二个broker始终无法启动，
 
-![image-20201209234731822](C:\Users\PengYu\AppData\Roaming\Typora\typora-user-images\image-20201209234731822.png)
+![image-20201209234731822](http://yuge-imgsubmit.oss-cn-shenzhen.aliyuncs.com/img/image-20201209234731822.png)
 
 我后来查看了nohup.out
 
 发现一直显示我已启动MQ，很无语
 
-![image-20201209234914946](C:\Users\PengYu\AppData\Roaming\Typora\typora-user-images\image-20201209234914946.png)
+![image-20201209234914946](http://yuge-imgsubmit.oss-cn-shenzhen.aliyuncs.com/img/image-20201209234914946.png)
 
 我查了原因之后，发现master和slavestorePathRootDir是一样的，会引起错误冲突，
 
