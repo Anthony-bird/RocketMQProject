@@ -22,13 +22,13 @@
 
 
 
-![image-20201209003352700](http://yuge-imgsubmit.oss-cn-shenzhen.aliyuncs.com/img/image-20201209003352700.png)
+![image-20201209003352700](C:\Users\PengYu\AppData\Roaming\Typora\typora-user-images\image-20201209003352700.png)
 
 
 
 查看了nohup.out 
 
-![image-20201209003519822](http://yuge-imgsubmit.oss-cn-shenzhen.aliyuncs.com/img/image-20201209003519822.png)
+![image-20201209003519822](C:\Users\PengYu\AppData\Roaming\Typora\typora-user-images\image-20201209003519822.png)
 
 修改了runserver.sh和(runbroker.sh)里面的配置，修改之后发现非常正确。
 
@@ -448,13 +448,13 @@ slave1:nohup sh mqbroker -c /usr/local/rocketmq/rocketmq-all-4.4.0-bin-release/c
 
 启动broker会出现的问题，第二个broker始终无法启动，
 
-![image-20201209234731822](http://yuge-imgsubmit.oss-cn-shenzhen.aliyuncs.com/img/image-20201209234731822.png)
+![image-20201209234731822](C:\Users\PengYu\AppData\Roaming\Typora\typora-user-images\image-20201209234731822.png)
 
 我后来查看了nohup.out
 
 发现一直显示我已启动MQ，很无语
 
-![image-20201209234914946](http://yuge-imgsubmit.oss-cn-shenzhen.aliyuncs.com/img/image-20201209234914946.png)
+![image-20201209234914946](C:\Users\PengYu\AppData\Roaming\Typora\typora-user-images\image-20201209234914946.png)
 
 我查了原因之后，发现master和slavestorePathRootDir是一样的，会引起错误冲突，
 
@@ -476,3 +476,115 @@ mkdir /usr/local/rocketmq/store2/index
 ```
 
 重新创建目录之后，在进入配置文件把主从的slavestorePathRootDir和其他相关路径更改，之后重新启动，即可用jps命令检查到同时启动成功了。
+
+### 5.集群监控平台搭建
+
+在github上下载源码编译打包
+
+### 
+
+```sh
+git clone https://github.com/apache/rocketmq-externals
+cd rocketmq-console
+mvn clean package -Dmaven.test.skip=true  打包之前要配置集群的地址
+
+注意：打包前在rocketmq-console中配置namesrv集群地址：(两台机器的IP)
+rocketmq.config.namesrvAddr=192.168.43.167:9876;172.22.58.136:9876
+上传到机器
+启动rocketmq-console：
+java -jar rocketmq-console-ng-1.0.0.jar
+```
+
+客服端暂时访问不到，会出现关闭连接访问不到地址bug，使用了下面的命令，还没有解决，
+
+nohup sh mqbroker -n 39.108.88.117:9876 -c conf/broker.conf autoCreateTopicEnable=true &
+
+./mqadmin updateTopic -n 39.108.88.117:9876 -t stock -c DefaultCluster
+
+
+
+经过几个小时的尝试之后，我果断放弃了硬钢，选者在本地再开一台虚拟机，重新配置集群，最后尝试在服务器端启动。
+
+启动成功后，我们就可以通过浏览器访问`http://localhost:8080`进入控制台界面了，
+
+![image-20201212024613141](http://yuge-imgsubmit.oss-cn-shenzhen.aliyuncs.com/img/image-20201212024613141.png)
+
+### 6.消息发送样例
+
+导入依赖
+
+```xml
+<dependency>
+    <groupId>org.apache.rocketmq</groupId>
+    <artifactId>rocketmq-client</artifactId>
+    <version>4.4.0</version>
+</dependency>
+```
+
+消息生产者步骤分析
+
+1.创建消息生产者producer，并制定生产者组名
+2.指定Nameserver地址
+3.启动producer
+4.创建消息对象，指定主题Topic、Tag和消息体
+5.发送消息
+6.关闭生产者producer
+
+消息消费者步骤分析
+
+1.创建消费者Consumer，制定消费者组名
+2.指定Nameserver地址
+3.订阅主题Topic和Tag
+4.设置回调函数，处理消息
+5.启动消费者consumer
+
+
+
+#### 6.1基本样例
+
+ 消息发送
+
+发送同步消息
+
+```java
+/*
+* 发送同步消息
+* */
+public class SyncProducer {
+    public static void main(String[] args) throws Exception {
+//        1.创建消息生产者producer，并制定生产者组名
+        DefaultMQProducer producer = new DefaultMQProducer("group1");
+//        2.指定Nameserver地址
+        producer.setNamesrvAddr("192.168.43.167:9876;192.168.43.168:9876");
+//        3.启动producer
+        producer.start();
+        for (int i =0;i< 10 ;i++){
+            //        4.创建消息对象，指定主题Topic、Tag和消息体
+            /**
+             * 参数一：消息主题：Topic
+             * 参数二：消息Tag
+             * 参数三： 消息内容
+             * */
+            Message msg = new Message("base", "Tag1", ("Hello World" + i).getBytes());
+            //        5.发送消息
+            SendResult result = producer.send(msg);
+            //发送状态
+            SendStatus status = result.getSendStatus();
+            //消息ID
+            String msgId = result.getMsgId();
+            //消息接收队列ID
+            int queueId = result.getMessageQueue().getQueueId();
+            System.out.println("发送结果:"+result);
+            //线程睡1秒
+            TimeUnit.SECONDS.sleep(1);
+        }
+
+//        6.关闭生产者producer
+        producer.shutdown();
+    }
+}
+```
+
+
+
+发送异步消息
