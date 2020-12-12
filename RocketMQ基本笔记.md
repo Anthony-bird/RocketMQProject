@@ -99,6 +99,8 @@ systemctl restart network
 暴力配置法
 # 关闭防火墙
 systemctl stop firewalld.service 
+# 禁止firewall开机启动
+systemctl disable firewalld.service
 
 # 查看防火墙的状态
 firewall-cmd --state 
@@ -505,7 +507,7 @@ nohup sh mqbroker -n 39.108.88.117:9876 -c conf/broker.conf autoCreateTopicEnabl
 
 经过几个小时的尝试之后，我果断放弃了硬钢，选者在本地再开一台虚拟机，重新配置集群，最后尝试在服务器端启动。
 
-启动成功后，我们就可以通过浏览器访问`http://localhost:8080`进入控制台界面了，
+启动成功后，我们就可以通过浏览器访问`http://192.168.43.167:8080`进入控制台界面了，
 
 ![image-20201212024613141](http://yuge-imgsubmit.oss-cn-shenzhen.aliyuncs.com/img/image-20201212024613141.png)
 
@@ -588,3 +590,305 @@ public class SyncProducer {
 
 
 发送异步消息
+
+```java
+/**
+ * 发送异步消息
+ * */
+public class AsyncProducer {
+    public static void main(String[] args) throws Exception{
+        //        1.创建消息生产者producer，并制定生产者组名
+        DefaultMQProducer producer = new DefaultMQProducer("group1");
+//        2.指定Nameserver地址
+        producer.setNamesrvAddr("192.168.43.167:9876;192.168.43.168:9876");
+//        3.启动producer
+        producer.start();
+        for (int i =0;i< 10 ;i++){
+            //        4.创建消息对象，指定主题Topic、Tag和消息体
+            /**
+             * 参数一：消息主题：Topic
+             * 参数二：消息Tag
+             * 参数三： 消息内容
+             * */
+            Message msg = new Message("base", "Tag2", ("Hello World" + i).getBytes());
+            //        5.发送消息
+            producer.send(msg, new SendCallback() {
+                /**
+                 * 发送成功回调函数
+                 * sendResult
+                 * */
+                public void onSuccess(SendResult sendResult) {
+                    System.out.println("发送结果"+sendResult);
+                }
+                /**
+                 * 发送失败回调函数
+                 * */
+                public void onException(Throwable e) {
+                    System.out.println("发送失败"+e);
+                }
+            });
+          
+            //线程睡1秒
+            TimeUnit.SECONDS.sleep(1);
+        }
+
+//        6.关闭生产者producer
+        producer.shutdown();
+    }
+}
+```
+
+
+
+发送单项消息
+
+```java
+/**
+ * 发送单向消息
+ * */
+public class OneWayProducer {
+    public static void main(String[] args) throws Exception{
+        //        1.创建消息生产者producer，并制定生产者组名
+        DefaultMQProducer producer = new DefaultMQProducer("group1");
+//        2.指定Nameserver地址
+        producer.setNamesrvAddr("192.168.43.167:9876;192.168.43.168:9876");
+//        3.启动producer
+        producer.start();
+        for (int i =0;i< 10 ;i++){
+            //        4.创建消息对象，指定主题Topic、Tag和消息体
+            /**
+             * 参数一：消息主题：Topic
+             * 参数二：消息Tag
+             * 参数三： 消息内容
+             * */
+            Message msg = new Message("base", "Tag3", ("Hello World,单项消息" + i).getBytes());
+            //        5.发送消息
+            producer.sendOneway(msg);
+
+            //线程睡1秒
+            TimeUnit.SECONDS.sleep(1);
+        }
+
+//        6.关闭生产者producer
+        producer.shutdown();
+    }
+}
+```
+
+
+
+**消息消费**
+
+分为负载均衡模式和广播模式，默认为负载均衡模式。
+
+负载均衡模式
+
+```java
+/**
+ * 消息的接受者
+ * */
+public class Consumer {
+    public static void main(String[] args) throws Exception {
+        //1.创建消费者Consumer，制定消费者组名
+        DefaultMQPushConsumer consumer = new DefaultMQPushConsumer("group1");
+
+        //2.指定Nameserver地址
+        consumer.setNamesrvAddr("192.168.43.167:9876;192.168.43.168:9876");
+        //3.订阅主题Topic和Tag
+        consumer.subscribe("base","Tag3");
+        //4.设置回调函数，处理消息
+        consumer.registerMessageListener(new MessageListenerConcurrently() {
+            public ConsumeConcurrentlyStatus consumeMessage(List<MessageExt> msgs, ConsumeConcurrentlyContext context) {
+                for (MessageExt msg:msgs){
+                    System.out.println(new String(msg.getBody()));
+                }
+                return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
+            }
+        });
+       // 5.启动消费者consumer
+        consumer.start();
+    }
+}
+```
+
+广播模式
+
+
+
+```java
+/**
+ * 消息的接受者
+ * */
+public class Consumer {
+    public static void main(String[] args) throws Exception {
+        //1.创建消费者Consumer，制定消费者组名
+        DefaultMQPushConsumer consumer = new DefaultMQPushConsumer("group1");
+
+        //2.指定Nameserver地址
+        consumer.setNamesrvAddr("192.168.43.167:9876;192.168.43.168:9876");
+        //3.订阅主题Topic和Tag
+        consumer.subscribe("base","Tag1");
+        //广播模式消费
+        consumer.setMessageModel(MessageModel.BROADCASTING);
+        //4.设置回调函数，处理消息
+        consumer.registerMessageListener(new MessageListenerConcurrently() {
+            public ConsumeConcurrentlyStatus consumeMessage(List<MessageExt> msgs, ConsumeConcurrentlyContext context) {
+                for (MessageExt msg:msgs){
+                    System.out.println(new String(msg.getBody()));
+                }
+                return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
+            }
+        });
+       // 5.启动消费者consumer
+        consumer.start();
+    }
+}
+```
+
+
+
+#### 顺序消息
+
+按照消息发送的顺序进行消费，可以分为分区有序或者全局有序。当发送和消费参与的queue只有一个，则是全局有序；如果多个queue参与，则为分区有序。
+
+ **顺序消息生产**
+
+先创建一个实体类
+
+```java
+/**
+ * 订单构建者
+ * */
+public class OrderStep {
+    private long orderId;
+    private String desc;
+
+ get,set,toString...
+  
+    /**
+     * 生成模拟订单数据
+     */
+    public static List<OrderStep> buildOrders() {
+        List<OrderStep> orderList = new ArrayList<OrderStep>();
+        //1039L 创建 付款 推送 完成
+        //1065L创建 付款
+        //7235L 创建 付款
+        OrderStep orderDemo = new OrderStep();
+        orderDemo.setOrderId(1039L);
+        orderDemo.setDesc("创建");
+        orderList.add(orderDemo);
+
+        orderDemo = new OrderStep();
+        orderDemo.setOrderId(1065L);
+        orderDemo.setDesc("创建");
+        orderList.add(orderDemo);
+
+        orderDemo = new OrderStep();
+        orderDemo.setOrderId(7235L);
+        orderDemo.setDesc("创建");
+        orderList.add(orderDemo);
+
+        orderDemo = new OrderStep();
+        orderDemo.setOrderId(1039L);
+        orderDemo.setDesc("付款");
+        orderList.add(orderDemo);
+
+        orderDemo = new OrderStep();
+        orderDemo.setOrderId(1065L);
+        orderDemo.setDesc("付款");
+        orderList.add(orderDemo);
+
+        orderDemo = new OrderStep();
+        orderDemo.setOrderId(7235L);
+        orderDemo.setDesc("付款");
+        orderList.add(orderDemo);
+
+        orderDemo = new OrderStep();
+        orderDemo.setOrderId(1039L);
+        orderDemo.setDesc("推送");
+        orderList.add(orderDemo);
+
+        orderDemo = new OrderStep();
+        orderDemo.setOrderId(1039L);
+        orderDemo.setDesc("完成");
+        orderList.add(orderDemo);
+
+        return orderList;
+    }
+}
+```
+
+
+
+顺序消息生产
+
+```java
+public class Producer {
+    public static void main(String[] args) throws Exception {
+        // 1.创建消息生产者producer，并制定生产者组名
+        DefaultMQProducer producer = new DefaultMQProducer("group1");
+//        2.指定Nameserver地址
+        producer.setNamesrvAddr("192.168.43.167:9876;192.168.43.168:9876");
+//        3.启动producer
+        producer.start();
+        //构建消息集合
+        List<OrderStep> orderSteps = OrderStep.buildOrders();
+        //发送消息
+        for (int i= 0; i <orderSteps.size();i++){
+            String body = orderSteps.get(i)+"";
+            Message message = new Message("OrderTopic", "Order", "i" + i, body.getBytes());
+            /*
+             * 消息对象
+             * 参数二：消息队列选择器
+             * 参数三：选者队列的业务标识
+             * */
+            SendResult sendResult= producer.send(message, new MessageQueueSelector() {
+                /**
+                 * mqs: 队列集合
+                 * msg：消息对象
+                 * arg：业务参数
+                 * */
+
+                public MessageQueue select(List<MessageQueue> mqs, Message msg, Object arg) {
+                    long orderId =(Long)  arg;
+                    long index = orderId % mqs.size();
+                    return mqs.get((int) index);
+                }
+            },orderSteps.get(i).getOrderId());
+            System.out.println("发送结果"+sendResult);
+        }
+        producer.shutdown();
+    }
+
+}
+```
+
+
+
+顺序消费消息
+
+```java
+public class Consumer {
+    public static void main(String[] args) throws Exception {
+        //1.创建消费者Consumer，制定消费者组名
+        DefaultMQPushConsumer consumer = new DefaultMQPushConsumer("group1");
+
+        //2.指定Nameserver地址
+        consumer.setNamesrvAddr("192.168.43.167:9876;192.168.43.168:9876");
+        //3.订阅主题Topic和Tag
+        consumer.subscribe("OrderTopic","*");
+        //4.注册消息监听器
+        consumer.registerMessageListener(new MessageListenerOrderly() {
+            public ConsumeOrderlyStatus consumeMessage(List<MessageExt> msgs, ConsumeOrderlyContext context) {
+                for (MessageExt msg: msgs){
+                    System.out.println("线程名称:【"+Thread.currentThread().getName()+ "】:"+new String(msg.getBody()));
+                }
+                return ConsumeOrderlyStatus.SUCCESS;
+            }
+        });
+        //5.启动消费者
+        consumer.start();
+        System.out.println("消费者启动");
+    }
+}
+```
